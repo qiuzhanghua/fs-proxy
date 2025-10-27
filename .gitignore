@@ -1,3 +1,7 @@
+# Files of sqlite and etc.
+# /data/fs-proxy.sqlite as default database file
+/data
+
 /target
 Cargo.lock
 

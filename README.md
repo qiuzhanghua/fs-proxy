@@ -16,10 +16,31 @@ It allows you to perform basic file operations over HTTP, such as reading, writi
 - Salvo framework
 - Tracing for logging
 
+## DB Support
+```bash
+cargo install sqlx-cli
+```
+and
+```
+mkdir data
+```
+
+1. SQLite
+    ```bash
+    # rm data/fs-proxy.sqlite
+    cd db/sqlite
+    export DATABASE_URL=sqlite:../../data/fs-proxy.sqlite
+    sqlx db create
+    sqlx migrate run
+    cd ../..
+    ```
+
+
+
 ## Usage
 1. Clone the repository:
    ```bash
-   git clone
+   git clone git@github.com:qiuzhanghua/fs-proxy.git
     cd fs-proxy
     ```
 2. Build the project:
