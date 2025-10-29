@@ -7,10 +7,17 @@ use std::time::Duration;
 
 use clap::{Parser, Subcommand};
 use salvo::prelude::*;
+use std::path::PathBuf;
 use tokio::signal;
 
-const PID_FILE: &str = "fs-proxy.pid";
-const CONFIG_FILE: &str = "fs-config.json";
+mod util;
+
+lazy_static::lazy_static! {
+    static ref PID_FILE: String = PathBuf::from(&*util::EXECUTABLE_DIRECTORY).join("fs-proxy.pid").to_str()
+    .unwrap_or("fs-proxy.pid").to_string();
+    static ref CONFIG_FILE: String = PathBuf::from(&*util::EXECUTABLE_DIRECTORY).join("fs-config.json").to_str()
+    .unwrap_or("fs-config.json").to_string();
+}
 
 /// 服务器配置结构
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone)]
@@ -83,13 +90,13 @@ async fn shutdown_handler(req: &mut Request, depot: &mut Depot, res: &mut Respon
 /// 保存PID到文件
 fn save_pid() -> io::Result<()> {
     let pid = std::process::id().to_string();
-    fs::write(PID_FILE, pid)?;
+    fs::write(PID_FILE.clone(), pid)?;
     Ok(())
 }
 
 /// 读取PID文件
 fn read_pid() -> Option<u32> {
-    match fs::read_to_string(PID_FILE) {
+    match fs::read_to_string(PID_FILE.clone()) {
         Ok(pid_str) => pid_str.trim().parse().ok(),
         Err(_) => None,
     }
@@ -277,10 +284,10 @@ fn get_process_info(pid: u32) -> Result<String, String> {
 
 /// 加载服务器配置
 fn load_config() -> ServerConfig {
-    match fs::read_to_string(CONFIG_FILE) {
+    match fs::read_to_string(CONFIG_FILE.clone()) {
         Ok(content) => match serde_json::from_str(&content) {
             Ok(config) => {
-                println!("已加载配置文件: {}", CONFIG_FILE);
+                println!("已加载配置文件: {}", CONFIG_FILE.clone());
                 config
             }
             Err(e) => {
@@ -293,7 +300,7 @@ fn load_config() -> ServerConfig {
             let default_config = ServerConfig::default();
             // 创建默认配置文件
             if let Ok(content) = serde_json::to_string_pretty(&default_config) {
-                let _ = fs::write(CONFIG_FILE, content);
+                let _ = fs::write(CONFIG_FILE.clone(), content);
             }
             default_config
         }
@@ -328,7 +335,7 @@ async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
     println!("启动FS Proxy ({}版本)...", os);
     println!("监听地址: http://{}:{}", config.host, config.port);
     println!("工作线程数: {}", config.workers);
-    println!("PID文件: {}", PID_FILE);
+    println!("PID文件: {}", PID_FILE.clone());
 
     // 保存PID
     save_pid()?;
@@ -364,7 +371,7 @@ async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 删除PID文件
-    let _ = fs::remove_file(PID_FILE);
+    let _ = fs::remove_file(PID_FILE.clone());
 
     println!("服务器已停止");
     Ok(())
@@ -450,7 +457,7 @@ fn handle_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         Commands::Stop => {
             stop_server()?;
             // 清理PID文件
-            let _ = fs::remove_file(PID_FILE);
+            let _ = fs::remove_file(PID_FILE.clone());
             println!("服务器已停止");
             Ok(())
         }
@@ -483,7 +490,7 @@ fn handle_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
         }
         Commands::Kill { pid } => {
             kill_process(pid, true)?;
-            let _ = fs::remove_file(PID_FILE);
+            let _ = fs::remove_file(PID_FILE.clone());
             println!("进程已强制终止");
             Ok(())
         }
