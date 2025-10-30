@@ -67,7 +67,7 @@ fn is_process_running(pid: u32) -> bool {
         "linux" | "macos" => {
             // Linux/macOS: 使用 kill -0 检查进程是否存在
             let output = Command::new("kill")
-                .args(&["-0", &pid.to_string()])
+                .args(["-0", &pid.to_string()])
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .output();

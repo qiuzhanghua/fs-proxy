@@ -1,8 +1,11 @@
+use dotenv::dotenv;
+use lazy_static::lazy_static;
+use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::fs::OpenOptions;
+use std::io::prelude::*;
 use std::path::PathBuf;
-
-use lazy_static::lazy_static;
 
 lazy_static! {
     pub static ref EXECUTABLE_DIRECTORY: String = match get_executable_directory() {
@@ -30,6 +33,48 @@ pub fn get_executable_directory() -> Result<PathBuf, Box<dyn std::error::Error>>
     Ok(exe_dir.to_path_buf())
 }
 
+pub fn write_to_env_file(
+    env_data: HashMap<String, String>,
+    file_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // 打开文件，如果不存在则创建，追加模式
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(file_path)?;
+
+    // 写入键值对
+    for (key, value) in env_data {
+        let line = format!("{}={}\n", key, value);
+        file.write_all(line.as_bytes())?;
+    }
+    Ok(())
+}
+
+pub fn write_to_default_env_file(
+    env_data: HashMap<String, String>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = PathBuf::from(&*EXECUTABLE_DIRECTORY)
+        .join(".env")
+        .to_str()
+        .unwrap_or(".env")
+        .to_string();
+    write_to_env_file(env_data, &path)
+}
+
+pub fn read_env_to_hashmap() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    let mut env_map = HashMap::<String, String>::new();
+
+    if dotenv().ok().is_some() {
+        // 获取所有环境变量
+        for (key, value) in env::vars() {
+            env_map.insert(key, value);
+        }
+    }
+
+    Ok(env_map)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -42,6 +87,17 @@ mod tests {
                 println!("可执行文件目录: {:?}", path);
             }
             Err(e) => panic!("获取可执行文件目录失败: {}", e),
+        }
+    }
+
+    #[test]
+    fn test_write_to_default_env_file() {
+        let env_data: HashMap<String, String> = HashMap::new();
+        match write_to_default_env_file(env_data) {
+            Ok(_) => {
+                println!("OK")
+            }
+            Err(e) => panic!("{}", e),
         }
     }
 }
