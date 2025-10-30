@@ -3,7 +3,8 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::fs::OpenOptions;
+use std::fs::{File, OpenOptions};
+use std::io::BufReader;
 use std::io::prelude::*;
 use std::path::PathBuf;
 
@@ -65,14 +66,55 @@ pub fn write_to_default_env_file(
 pub fn read_env_to_hashmap() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let mut env_map = HashMap::<String, String>::new();
 
-    if dotenv().ok().is_some() {
-        // 获取所有环境变量
-        for (key, value) in env::vars() {
-            env_map.insert(key, value);
+    let env_file = PathBuf::from(&*EXECUTABLE_DIRECTORY)
+        .join(".env")
+        .to_str()
+        .unwrap_or(".env")
+        .to_string();
+    println!("{:?}", dotenv().ok());
+    match dotenv::from_filename(env_file) {
+        Ok(env) => {
+            // 获取所有环境变量
+            println!(".env file exists");
+            for (key, value) in env::vars() {
+                env_map.insert(key, value);
+            }
+        }
+        Err(e) => {
+            return Err(e.into());
         }
     }
 
     Ok(env_map)
+}
+
+fn parse_env_file() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+    let env_file = PathBuf::from(&*EXECUTABLE_DIRECTORY)
+        .join(".env")
+        .to_str()
+        .unwrap_or(".env")
+        .to_string();
+    let file = File::open(env_file)?;
+    let reader = BufReader::new(file);
+
+    Ok(reader
+        .lines()
+        .map_while(Result::ok)
+        .map(|line| line.trim().to_string())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .filter_map(|line| {
+            line.find('=').map(|pos| {
+                (
+                    line[..pos].trim().to_string(),
+                    line[pos + 1..]
+                        .trim()
+                        .trim_matches('"')
+                        .trim_matches('\'')
+                        .to_string(),
+                )
+            })
+        })
+        .collect())
 }
 
 #[cfg(test)]
@@ -96,6 +138,16 @@ mod tests {
         match write_to_default_env_file(env_data) {
             Ok(_) => {
                 println!("OK")
+            }
+            Err(e) => panic!("{}", e),
+        }
+    }
+
+    #[test]
+    fn test_read_env_to_hashmap() {
+        match parse_env_file() {
+            Ok(hashmap) => {
+                assert_eq!(hashmap, HashMap::new());
             }
             Err(e) => panic!("{}", e),
         }
