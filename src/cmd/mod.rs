@@ -14,13 +14,12 @@ use tokio::signal;
 struct ServerConfig {
     port: u16,
     host: String,
-    workers: usize,
 }
 
 /// 命令行参数结构
 #[derive(Parser, Debug)]
-#[command(name = "rust-web-server")]
-#[command(about = "跨平台Rust Web服务器管理工具 (基于Salvo框架)", version)]
+#[command(name = "fs-proxy")]
+#[command(about = "跨平台Rust FS Proxy (基于Salvo框架)", version)]
 pub struct Cli {
     #[command(subcommand)]
     pub(crate) command: Commands,
@@ -46,10 +45,12 @@ pub enum Commands {
 }
 
 /// 保存PID到文件
-fn save_pid() -> io::Result<()> {
+fn save_pid() -> anyhow::Result<(), String> {
     let pid = std::process::id().to_string();
-    fs::write(PID_FILE.clone(), pid)?;
-    Ok(())
+    match fs::write(PID_FILE.clone(), pid) {
+        Ok(_) => Ok(()),
+        Err(e) => Err(format!("{}", e)),
+    }
 }
 
 /// 读取PID文件
@@ -101,14 +102,14 @@ fn is_process_running(pid: u32) -> bool {
             }
         }
         _ => {
-            println!("不支持的操作系统: {}", os);
+            log::warn!("不支持的操作系统: {}", os);
             false
         }
     }
 }
 
 /// 跨平台进程终止
-fn kill_process(pid: u32, force: bool) -> Result<(), String> {
+fn kill_process(pid: u32, force: bool) -> anyhow::Result<(), String> {
     let os = env::consts::OS;
 
     match os {
@@ -121,7 +122,7 @@ fn kill_process(pid: u32, force: bool) -> Result<(), String> {
                 .map_err(|e| format!("发送停止信号失败: {}", e))?;
 
             if output.status.success() {
-                println!("进程 {} 已发送 {} 信号", pid, signal);
+                log::info!("进程 {} 已发送 {} 信号", pid, signal);
                 Ok(())
             } else {
                 Err(format!(
@@ -146,7 +147,7 @@ fn kill_process(pid: u32, force: bool) -> Result<(), String> {
                 .map_err(|e| format!("终止进程失败: {}", e))?;
 
             if output.status.success() {
-                println!("进程 {} 已终止", pid);
+                log::info!("进程 {} 已终止", pid);
                 Ok(())
             } else {
                 Err(format!(
@@ -169,23 +170,23 @@ fn is_server_running() -> bool {
 }
 
 /// 停止运行中的服务器
-fn stop_server() -> Result<(), String> {
+fn stop_server() -> anyhow::Result<(), String> {
     if let Some(pid) = read_pid() {
-        println!("正在停止运行中的服务器 (PID: {})", pid);
+        log::info!("正在停止运行中的服务器 (PID: {})", pid);
 
         if is_process_running(pid) {
             // 首先尝试优雅关闭
             if let Err(e) = kill_process(pid, false) {
-                println!("优雅关闭失败: {}", e);
-                println!("尝试强制终止...");
+                log::warn!("优雅关闭失败: {}", e);
+                log::warn!("尝试强制终止...");
                 kill_process(pid, true)?;
             } else {
                 // 等待进程结束
-                println!("等待进程优雅关闭...");
+                log::info!("等待进程优雅关闭...");
                 for i in 0..30 {
                     thread::sleep(Duration::from_millis(100));
                     if !is_process_running(pid) {
-                        println!("服务器已成功停止");
+                        log::info!("服务器已成功停止");
                         return Ok(());
                     }
                     if i % 10 == 0 {
@@ -195,18 +196,18 @@ fn stop_server() -> Result<(), String> {
                 }
 
                 // 优雅关闭超时，强制终止
-                println!("\n优雅关闭超时，强制终止进程...");
+                log::warn!("\n优雅关闭超时，强制终止进程...");
                 kill_process(pid, true)?;
             }
         } else {
-            println!("服务器进程不存在");
+            log::warn!("服务器进程不存在");
         }
     }
     Ok(())
 }
 
 /// 获取进程信息
-fn get_process_info(pid: u32) -> Result<String, String> {
+fn get_process_info(pid: u32) -> anyhow::Result<String, String> {
     let os = env::consts::OS;
 
     match os {
@@ -251,14 +252,28 @@ fn load_config() -> ServerConfig {
         if let Some(h) = map.get("HOST") {
             default_config.host = h.to_string();
         }
-        println!("加载配置文件: {}", util::EXECUTABLE_DIRECTORY.clone());
+        log::info!(
+            "加载配置文件: {}",
+            util::EXECUTABLE_DIRECTORY.clone() + std::path::MAIN_SEPARATOR_STR + ".env"
+        );
     }
 
     let mut map = HashMap::new();
     map.insert("PORT".to_string(), default_config.port.to_string());
     map.insert("HOST".to_string(), default_config.host.to_string());
-    util::write_to_default_env_file(map).ok();
-    println!("更新配置文件: {}", util::EXECUTABLE_DIRECTORY.clone());
+    log::debug!("{:?}", map.clone());
+    match util::write_to_default_env_file(map) {
+        Ok(_) => {
+            log::debug!("write ok")
+        }
+        Err(e) => {
+            log::warn!("{:?}", e)
+        }
+    }
+    log::info!(
+        "更新配置文件: {}",
+        util::EXECUTABLE_DIRECTORY.clone() + std::path::MAIN_SEPARATOR_STR + ".env"
+    );
 
     default_config
 }
@@ -269,21 +284,19 @@ impl Default for ServerConfig {
         ServerConfig {
             port: 8080,
             host: "127.0.0.1".to_string(),
-            workers: 4,
         }
     }
 }
 
 /// 启动Web服务器
 #[tokio::main]
-async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
+async fn start_server() -> anyhow::Result<(), String> {
     let config = load_config();
     let os = env::consts::OS;
 
-    println!("启动FS Proxy ({}版本)...", os);
-    println!("监听地址: http://{}:{}", config.host, config.port);
-    println!("工作线程数: {}", config.workers);
-    println!("PID文件: {}", PID_FILE.clone());
+    log::info!("启动FS Proxy ({}版本)...", os);
+    log::info!("监听地址: http://{}:{}", config.host, config.port);
+    log::info!("PID文件: {}", PID_FILE.clone());
 
     // 保存PID
     save_pid()?;
@@ -293,13 +306,13 @@ async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
 
     // 创建TCP监听器
     let addr = format!("{}:{}", config.host, config.port);
-    println!("正在监听 {}", addr);
+    log::info!("正在监听 {}", addr);
     let acceptor = TcpListener::new(addr).bind().await;
 
     // 启动服务器
     let server = Server::new(acceptor).serve(router);
 
-    println!("服务器已启动，按 Ctrl+C 停止");
+    log::info!("服务器已启动，按 Ctrl+C 停止");
 
     // 将服务器 Future 放到独立任务中运行，并使用 select 等待任务完成或 Ctrl+C
     let server_handle = tokio::spawn(server);
@@ -308,26 +321,26 @@ async fn start_server() -> Result<(), Box<dyn std::error::Error>> {
         // 等待服务器任务完成
         res = server_handle => {
             match res {
-                Ok(_) => println!("服务器正常退出"),
-                Err(e) => println!("服务器任务被取消或 panic: {}", e),
+                Ok(_) => log::info!("服务器正常退出"),
+                Err(e) => log::error!("服务器任务被取消或 panic: {}", e),
             }
         }
         // 等待 Ctrl+C 信号
         _ = signal::ctrl_c() => {
-            println!("\n接收到中断信号，正在关闭服务器...");
+            log::info!("\n接收到中断信号，正在关闭服务器...");
         }
     }
 
     // 删除PID文件
     let _ = fs::remove_file(PID_FILE.clone());
 
-    println!("服务器已停止");
+    log::info!("服务器已停止");
     Ok(())
 }
 
 /// 重启服务器
-fn restart_server() -> Result<(), String> {
-    println!("正在重启服务器...");
+fn restart_server() -> anyhow::Result<(), String> {
+    log::info!("正在重启服务器...");
 
     // 停止现有服务器
     stop_server()?;
@@ -339,7 +352,7 @@ fn restart_server() -> Result<(), String> {
     let current_exe =
         env::current_exe().map_err(|e| format!("获取当前可执行文件路径失败: {}", e))?;
 
-    println!("重新启动服务器...");
+    log::info!("重新启动服务器...");
     let mut command = Command::new(&current_exe);
     command.args(["start"]);
 
@@ -348,7 +361,7 @@ fn restart_server() -> Result<(), String> {
         .spawn()
         .map_err(|e| format!("启动新进程失败: {}", e))?;
 
-    println!("服务器重启请求已发送");
+    log::info!("服务器重启请求已发送");
     Ok(())
 }
 
@@ -383,14 +396,14 @@ fn show_platform_info() {
 }
 
 /// 处理命令行命令
-pub fn handle_command(command: Commands) -> Result<(), Box<dyn std::error::Error>> {
+pub fn handle_command(command: Commands) -> anyhow::Result<(), String> {
     match command {
         Commands::Start => {
             if is_server_running() {
-                println!("错误: 服务器已在运行中");
+                log::error!("错误: 服务器已在运行中");
                 if let Some(pid) = read_pid() {
-                    println!("运行中的PID: {}", pid);
-                    println!("如需重启，请先运行: stop 命令");
+                    log::info!("运行中的PID: {}", pid);
+                    log::info!("如需重启，请先运行: stop 命令");
 
                     // 显示进程信息
                     if let Ok(info) = get_process_info(pid) {
@@ -406,7 +419,7 @@ pub fn handle_command(command: Commands) -> Result<(), Box<dyn std::error::Error
             stop_server()?;
             // 清理PID文件
             let _ = fs::remove_file(PID_FILE.clone());
-            println!("服务器已停止");
+            log::info!("服务器已停止");
             Ok(())
         }
         Commands::Restart => {
@@ -445,9 +458,6 @@ pub fn handle_command(command: Commands) -> Result<(), Box<dyn std::error::Error
         Commands::Platform => {
             show_platform_info();
             Ok(())
-        } // Commands::Help => {
-          //     // Clap会自动处理帮助信息
-          //     Ok(())
-          // }
+        }
     }
 }

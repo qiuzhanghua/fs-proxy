@@ -14,9 +14,9 @@ lazy_static! {
     };
 }
 
-pub fn get_executable_directory() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    // 获取当前可执行文件的完整路径
-    let exe_path = env::current_exe().map_err(|e| format!("获取可执行文件路径失败: {}", e))?;
+pub fn get_executable_directory() -> anyhow::Result<PathBuf> {
+    let exe_path = std::env::current_exe()
+        .map_err(|e| anyhow::anyhow!("Failed to get current executable path: {}", e))?;
 
     // 如果是符号链接，尝试获取真实路径
     let canonical_path = if exe_path.is_symlink() {
@@ -25,20 +25,17 @@ pub fn get_executable_directory() -> Result<PathBuf, Box<dyn std::error::Error>>
         exe_path.clone()
     };
 
-    // 获取父目录
     let exe_dir = canonical_path
         .parent()
-        .ok_or_else(|| "无法获取可执行文件所在目录".to_string())?;
+        .ok_or_else(|| anyhow::anyhow!("Failed to get parent directory of executable"))?;
 
     Ok(exe_dir.to_path_buf())
 }
 
-pub fn write_to_env_file(
-    env_data: HashMap<String, String>,
-    file_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_to_env_file(env_data: HashMap<String, String>, file_path: &str) -> anyhow::Result<()> {
     // 打开文件，如果不存在则创建，追加模式
     let mut file = OpenOptions::new()
+        .write(true)
         .create(true)
         // .append(true)
         .truncate(true)
@@ -47,23 +44,23 @@ pub fn write_to_env_file(
     // 写入键值对
     for (key, value) in env_data {
         let line = format!("{}={}\n", key, value);
+        log::debug!("{}", line);
         file.write_all(line.as_bytes())?;
     }
     Ok(())
 }
 
-pub fn write_to_default_env_file(
-    env_data: HashMap<String, String>,
-) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_to_default_env_file(env_data: HashMap<String, String>) -> anyhow::Result<()> {
     let path = PathBuf::from(&*EXECUTABLE_DIRECTORY)
         .join(".env")
         .to_str()
         .unwrap_or(".env")
         .to_string();
+    log::debug!("{}", path);
     write_to_env_file(env_data, &path)
 }
 
-pub fn read_env_to_hashmap() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+pub fn read_env_to_hashmap() -> anyhow::Result<HashMap<String, String>> {
     let mut env_map = HashMap::<String, String>::new();
 
     let env_file = PathBuf::from(&*EXECUTABLE_DIRECTORY)
@@ -84,7 +81,7 @@ pub fn read_env_to_hashmap() -> Result<HashMap<String, String>, Box<dyn std::err
     Ok(env_map)
 }
 
-pub fn parse_env_file() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+pub fn parse_env_file() -> anyhow::Result<HashMap<String, String>> {
     let env_file = PathBuf::from(&*EXECUTABLE_DIRECTORY)
         .join(".env")
         .to_str()
@@ -135,7 +132,7 @@ mod tests {
             Ok(_) => {
                 println!("OK")
             }
-            Err(e) => panic!("{}", e),
+            Err(e) => panic!("{:?}", e),
         }
     }
 
