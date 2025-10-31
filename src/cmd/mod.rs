@@ -1,7 +1,8 @@
-use crate::{CONFIG_FILE, PID_FILE};
+use crate::{PID_FILE, util};
 use clap::{Parser, Subcommand};
 use salvo::conn::TcpListener;
 use salvo::{Listener, Server};
+use std::collections::HashMap;
 use std::io::Write;
 use std::process::{Command, Stdio, exit};
 use std::time::Duration;
@@ -241,27 +242,25 @@ fn get_process_info(pid: u32) -> Result<String, String> {
 
 /// 加载服务器配置
 fn load_config() -> ServerConfig {
-    match fs::read_to_string(CONFIG_FILE.clone()) {
-        Ok(content) => match serde_json::from_str(&content) {
-            Ok(config) => {
-                println!("已加载配置文件: {}", CONFIG_FILE.clone());
-                config
-            }
-            Err(e) => {
-                println!("配置文件解析失败，使用默认配置: {}", e);
-                ServerConfig::default()
-            }
-        },
-        Err(_) => {
-            println!("配置文件不存在，使用默认配置");
-            let default_config = ServerConfig::default();
-            // 创建默认配置文件
-            if let Ok(content) = serde_json::to_string_pretty(&default_config) {
-                let _ = fs::write(CONFIG_FILE.clone(), content);
-            }
-            default_config
+    let mut default_config = ServerConfig::default();
+
+    if let Ok(map) = util::read_env_to_hashmap() {
+        if let Some(p) = map.get("PORT") {
+            default_config.port = p.parse::<u16>().unwrap_or(8080);
         }
+        if let Some(h) = map.get("HOST") {
+            default_config.host = h.to_string();
+        }
+        println!("加载配置文件: {}", util::EXECUTABLE_DIRECTORY.clone());
     }
+
+    let mut map = HashMap::new();
+    map.insert("PORT".to_string(), default_config.port.to_string());
+    map.insert("HOST".to_string(), default_config.host.to_string());
+    util::write_to_default_env_file(map).ok();
+    println!("更新配置文件: {}", util::EXECUTABLE_DIRECTORY.clone());
+
+    default_config
 }
 
 // 为ServerConfig实现Default trait

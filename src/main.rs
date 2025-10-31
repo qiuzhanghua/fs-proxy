@@ -9,8 +9,6 @@ mod web;
 lazy_static::lazy_static! {
     static ref PID_FILE: String = PathBuf::from(&*util::EXECUTABLE_DIRECTORY).join("fs-proxy.pid").to_str()
     .unwrap_or("fs-proxy.pid").to_string();
-    static ref CONFIG_FILE: String = PathBuf::from(&*util::EXECUTABLE_DIRECTORY).join("fs-config.json").to_str()
-    .unwrap_or("fs-config.json").to_string();
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

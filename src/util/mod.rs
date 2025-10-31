@@ -1,4 +1,3 @@
-use dotenv::dotenv;
 use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::env;
@@ -41,7 +40,8 @@ pub fn write_to_env_file(
     // 打开文件，如果不存在则创建，追加模式
     let mut file = OpenOptions::new()
         .create(true)
-        .append(true)
+        // .append(true)
+        .truncate(true)
         .open(file_path)?;
 
     // 写入键值对
@@ -71,24 +71,20 @@ pub fn read_env_to_hashmap() -> Result<HashMap<String, String>, Box<dyn std::err
         .to_str()
         .unwrap_or(".env")
         .to_string();
-    println!("{:?}", dotenv().ok());
-    match dotenv::from_filename(env_file) {
-        Ok(env) => {
-            // 获取所有环境变量
-            println!(".env file exists");
-            for (key, value) in env::vars() {
-                env_map.insert(key, value);
-            }
-        }
-        Err(e) => {
-            return Err(e.into());
+    // println!("{:?}", dotenv().ok());
+
+    if dotenv::from_filename(env_file).is_ok() {
+        // 获取所有环境变量
+        // println!(".env file exists");
+        for (key, value) in env::vars() {
+            env_map.insert(key, value);
         }
     }
 
     Ok(env_map)
 }
 
-fn parse_env_file() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
+pub fn parse_env_file() -> Result<HashMap<String, String>, Box<dyn std::error::Error>> {
     let env_file = PathBuf::from(&*EXECUTABLE_DIRECTORY)
         .join(".env")
         .to_str()
@@ -144,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_env_to_hashmap() {
+    fn test_parse_env_file() {
         match parse_env_file() {
             Ok(hashmap) => {
                 assert_eq!(hashmap, HashMap::new());
