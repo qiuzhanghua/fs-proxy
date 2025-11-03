@@ -15,7 +15,7 @@ lazy_static! {
 }
 
 pub fn get_executable_directory() -> anyhow::Result<PathBuf> {
-    let exe_path = std::env::current_exe()
+    let exe_path = env::current_exe()
         .map_err(|e| anyhow::anyhow!("Failed to get current executable path: {}", e))?;
 
     // 如果是符号链接，尝试获取真实路径

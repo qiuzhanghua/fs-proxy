@@ -47,8 +47,8 @@ fn prepare_logger() -> anyhow::Result<()> {
     }
     if init_log.is_err() {
         let log4rs_yaml = Asset::get("log4rs.yaml").unwrap();
-        let log4rs_yaml_str = std::str::from_utf8(log4rs_yaml.data.as_ref()).unwrap();
-        let config: RawConfig = serde_yaml_ng::from_str(log4rs_yaml_str).unwrap();
+        let log4rs_yaml_str = std::str::from_utf8(log4rs_yaml.data.as_ref())?;
+        let config: RawConfig = serde_yaml_ng::from_str(log4rs_yaml_str)?;
         log4rs::init_raw_config(config)?;
     }
     // set logging level to off default
